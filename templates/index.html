@@ -140,6 +140,51 @@
             color: #888;
         }
         .stats span { color: #00ccff; }
+        .section-box {
+            background: #111118;
+            border: 1px solid #1a1a2e;
+            border-radius: 8px;
+            padding: 18px;
+            margin-bottom: 16px;
+        }
+        .section-box h3 {
+            color: #00ccff;
+            font-size: 14px;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .port-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .port-badge {
+            background: #00ff8822;
+            color: #00ff88;
+            border: 1px solid #00ff8844;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: bold;
+        }
+        .exposed-file-badge {
+            background: #ff004022;
+            color: #ff4466;
+            border: 1px solid #ff004044;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .exposed-file-badge .ef-meta {
+            color: #ff884488;
+            font-size: 11px;
+            font-weight: normal;
+        }
         .finding-card {
             background: #111118;
             border: 1px solid #1a1a2e;
@@ -205,6 +250,10 @@
             line-height: 1.6;
         }
         .disclaimer strong { color: #ff6600; }
+        .no-ports {
+            color: #666;
+            font-size: 13px;
+        }
         @media (max-width: 600px) {
             .input-group { flex-direction: column; }
             .finding-details { grid-template-columns: 1fr; }
@@ -217,7 +266,7 @@
     <div class="container">
         <div class="header">
             <h1>⟨ SecretScanner ⟩</h1>
-            <p class="subtitle">Exposed API Keys & Secrets Detection // Passive Reconnaissance</p>
+            <p class="subtitle">Port Scan // Exposed Files // API Keys & Secrets Detection</p>
         </div>
 
         <div class="scan-box">
@@ -234,8 +283,23 @@
                 <div class="stats">
                     <div>Secrets: <span id="totalSecrets">0</span></div>
                     <div>JS Files: <span id="jsCount">0</span></div>
+                    <div>Ports: <span id="portCount">0</span></div>
                 </div>
             </div>
+
+            <!-- Open Ports Section -->
+            <div class="section-box" id="portsSection" style="display:none;">
+                <h3>🔓 Open Ports</h3>
+                <div class="port-badges" id="portBadges"></div>
+            </div>
+
+            <!-- Exposed Files Section -->
+            <div class="section-box" id="exposedSection" style="display:none;">
+                <h3>⚠ Exposed Files</h3>
+                <div class="port-badges" id="exposedBadges"></div>
+            </div>
+
+            <!-- Secrets Found Section -->
             <div id="findingsContainer"></div>
         </div>
 
@@ -268,7 +332,7 @@
             scanBtn.textContent = '⟳ SCANNING...';
             status.className = 'status scanning';
             status.style.display = 'block';
-            status.textContent = '[ ] Initiating scan... Fetching page source and JS files...';
+            status.textContent = '[ ] Scanning ports, checking exposed files, fetching JS...';
             results.style.display = 'none';
 
             try {
@@ -300,25 +364,64 @@
 
         function displayResults(data) {
             results.style.display = 'block';
-            document.getElementById('totalSecrets').textContent = data.total_secrets;
-            document.getElementById('jsCount').textContent = data.js_files_scanned;
+            document.getElementById('totalSecrets').textContent = data.total_secrets || 0;
+            document.getElementById('jsCount').textContent = data.js_files_scanned || 0;
+            document.getElementById('portCount').textContent = (data.open_ports || []).length;
 
+            // Open Ports
+            const portsSection = document.getElementById('portsSection');
+            const portBadges = document.getElementById('portBadges');
+            portBadges.innerHTML = '';
+            if (data.open_ports && data.open_ports.length > 0) {
+                portsSection.style.display = 'block';
+                data.open_ports.forEach(port => {
+                    const badge = document.createElement('span');
+                    badge.className = 'port-badge';
+                    badge.textContent = port;
+                    portBadges.appendChild(badge);
+                });
+            } else {
+                portsSection.style.display = 'none';
+            }
+
+            // Exposed Files
+            const exposedSection = document.getElementById('exposedSection');
+            const exposedBadges = document.getElementById('exposedBadges');
+            exposedBadges.innerHTML = '';
+            if (data.exposed_files && data.exposed_files.length > 0) {
+                exposedSection.style.display = 'block';
+                data.exposed_files.forEach(ef => {
+                    const badge = document.createElement('span');
+                    badge.className = 'exposed-file-badge';
+                    badge.innerHTML = `${ef.path} <span class="ef-meta">:${ef.port} (${ef.size}B${ef.secrets_found > 0 ? ', ' + ef.secrets_found + ' secrets!' : ''})</span>`;
+                    exposedBadges.appendChild(badge);
+                });
+            } else {
+                exposedSection.style.display = 'none';
+            }
+
+            // Findings
             findingsContainer.innerHTML = '';
 
-            if (data.findings.length === 0) {
+            if (!data.findings || data.findings.length === 0) {
                 findingsContainer.innerHTML = `
                     <div class="no-findings">
                         <div class="icon">✓</div>
-                        <div>No exposed secrets detected</div>
+                        <div>No exposed secrets detected in page source or JS files</div>
                         <div style="color:#666;margin-top:5px;font-size:12px;">
-                            Scanned page source + ${data.js_files_scanned} JS files
+                            Scanned ${data.js_files_scanned || 0} JS files across ${(data.open_ports || []).length} open ports
                         </div>
                     </div>`;
                 return;
             }
 
+            const secretsHeader = document.createElement('div');
+            secretsHeader.className = 'section-box';
+            secretsHeader.innerHTML = '<h3>🔑 Secrets Found (Masked)</h3>';
+            findingsContainer.appendChild(secretsHeader);
+
             data.findings.forEach(f => {
-                const isRedType = ['Stripe Secret Key', 'Stripe Publishable Key', 'AWS Access Key', 'AWS Secret Key'].includes(f.type);
+                const isRedType = ['Stripe Secret Key', 'Stripe Publishable Key', 'AWS Access Key', 'AWS Secret Key', 'Private Key'].includes(f.type);
                 const typeClass = isRedType ? 'red' : 'orange';
 
                 const card = document.createElement('div');

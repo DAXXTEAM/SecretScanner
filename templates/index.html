@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecretScanner - Exposed Secrets Detection</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a0f;
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            min-height: 100vh;
+        }
+        .warning-banner {
+            background: linear-gradient(90deg, #ff0040, #ff6600, #ff0040);
+            color: #000;
+            text-align: center;
+            padding: 8px;
+            font-weight: bold;
+            font-size: 14px;
+            letter-spacing: 2px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .header h1 {
+            font-size: 2.5em;
+            background: linear-gradient(135deg, #00ff88, #00ccff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+        }
+        .header .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+        .scan-box {
+            background: #111118;
+            border: 1px solid #1a1a2e;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            display: flex;
+            gap: 12px;
+        }
+        .input-group input {
+            flex: 1;
+            background: #0a0a12;
+            border: 1px solid #2a2a3e;
+            border-radius: 8px;
+            padding: 14px 18px;
+            color: #00ff88;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        .input-group input:focus {
+            border-color: #00ff88;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.1);
+        }
+        .input-group input::placeholder {
+            color: #444;
+        }
+        .btn-scan {
+            background: linear-gradient(135deg, #00ff88, #00ccff);
+            border: none;
+            border-radius: 8px;
+            padding: 14px 30px;
+            color: #000;
+            font-weight: bold;
+            font-size: 16px;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.3s;
+            white-space: nowrap;
+        }
+        .btn-scan:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 255, 136, 0.3);
+        }
+        .btn-scan:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 6px;
+            display: none;
+            font-size: 14px;
+        }
+        .status.scanning {
+            display: block;
+            background: #1a1a2e;
+            color: #00ccff;
+            border: 1px solid #00ccff33;
+        }
+        .status.error {
+            display: block;
+            background: #2e1a1a;
+            color: #ff4444;
+            border: 1px solid #ff444433;
+        }
+        .results {
+            margin-top: 20px;
+        }
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #1a1a2e;
+        }
+        .results-header h2 {
+            color: #00ff88;
+            font-size: 1.2em;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            font-size: 13px;
+            color: #888;
+        }
+        .stats span { color: #00ccff; }
+        .finding-card {
+            background: #111118;
+            border: 1px solid #1a1a2e;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border-left: 4px solid #666;
+            transition: border-color 0.3s;
+        }
+        .finding-card.critical { border-left-color: #ff0040; }
+        .finding-card.high { border-left-color: #ff6600; }
+        .finding-card.medium { border-left-color: #ffcc00; }
+        .finding-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .badge {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .badge.critical { background: #ff004033; color: #ff0040; }
+        .badge.high { background: #ff660033; color: #ff6600; }
+        .badge.medium { background: #ffcc0033; color: #ffcc00; }
+        .type-badge {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .type-badge.red { background: #ff004022; color: #ff4466; border: 1px solid #ff004044; }
+        .type-badge.orange { background: #ff660022; color: #ff8844; border: 1px solid #ff660044; }
+        .finding-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            font-size: 13px;
+        }
+        .finding-details .label { color: #666; }
+        .finding-details .value { color: #00ff88; font-family: 'Courier New', monospace; }
+        .no-findings {
+            text-align: center;
+            padding: 40px;
+            color: #00ff88;
+            background: #111118;
+            border-radius: 8px;
+            border: 1px solid #00ff8833;
+        }
+        .no-findings .icon { font-size: 48px; margin-bottom: 10px; }
+        .disclaimer {
+            margin-top: 40px;
+            padding: 20px;
+            background: #111118;
+            border: 1px solid #1a1a2e;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+            line-height: 1.6;
+        }
+        .disclaimer strong { color: #ff6600; }
+        @media (max-width: 600px) {
+            .input-group { flex-direction: column; }
+            .finding-details { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="warning-banner">⚠ FOR AUTHORIZED SECURITY TESTING ONLY ⚠</div>
+    
+    <div class="container">
+        <div class="header">
+            <h1>⟨ SecretScanner ⟩</h1>
+            <p class="subtitle">Exposed API Keys & Secrets Detection // Passive Reconnaissance</p>
+        </div>
+
+        <div class="scan-box">
+            <div class="input-group">
+                <input type="text" id="urlInput" placeholder="https://target-domain.com" autofocus>
+                <button class="btn-scan" id="scanBtn" onclick="startScan()">▶ SCAN</button>
+            </div>
+            <div class="status" id="status"></div>
+        </div>
+
+        <div class="results" id="results" style="display:none;">
+            <div class="results-header">
+                <h2>// SCAN RESULTS</h2>
+                <div class="stats">
+                    <div>Secrets: <span id="totalSecrets">0</span></div>
+                    <div>JS Files: <span id="jsCount">0</span></div>
+                </div>
+            </div>
+            <div id="findingsContainer"></div>
+        </div>
+
+        <div class="disclaimer">
+            <strong>⚠ LEGAL DISCLAIMER</strong><br><br>
+            This tool is designed for <strong>authorized security testing only</strong>. 
+            Only scan targets you have explicit written permission to test. 
+            Unauthorized scanning may violate computer fraud laws including the 
+            Information Technology Act 2000 (India), CFAA (US), and CMA (UK).<br><br>
+            <strong>InsafeLabs</strong> // Built by DAXX // github.com/DAXXTEAM
+        </div>
+    </div>
+
+    <script>
+        const urlInput = document.getElementById('urlInput');
+        const scanBtn = document.getElementById('scanBtn');
+        const status = document.getElementById('status');
+        const results = document.getElementById('results');
+        const findingsContainer = document.getElementById('findingsContainer');
+
+        urlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') startScan();
+        });
+
+        async function startScan() {
+            const url = urlInput.value.trim();
+            if (!url) return;
+
+            scanBtn.disabled = true;
+            scanBtn.textContent = '⟳ SCANNING...';
+            status.className = 'status scanning';
+            status.style.display = 'block';
+            status.textContent = '[ ] Initiating scan... Fetching page source and JS files...';
+            results.style.display = 'none';
+
+            try {
+                const resp = await fetch('/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+
+                const data = await resp.json();
+
+                if (data.error) {
+                    status.className = 'status error';
+                    status.textContent = '✗ Error: ' + data.error;
+                    return;
+                }
+
+                status.style.display = 'none';
+                displayResults(data);
+
+            } catch (err) {
+                status.className = 'status error';
+                status.textContent = '✗ Network error: ' + err.message;
+            } finally {
+                scanBtn.disabled = false;
+                scanBtn.textContent = '▶ SCAN';
+            }
+        }
+
+        function displayResults(data) {
+            results.style.display = 'block';
+            document.getElementById('totalSecrets').textContent = data.total_secrets;
+            document.getElementById('jsCount').textContent = data.js_files_scanned;
+
+            findingsContainer.innerHTML = '';
+
+            if (data.findings.length === 0) {
+                findingsContainer.innerHTML = `
+                    <div class="no-findings">
+                        <div class="icon">✓</div>
+                        <div>No exposed secrets detected</div>
+                        <div style="color:#666;margin-top:5px;font-size:12px;">
+                            Scanned page source + ${data.js_files_scanned} JS files
+                        </div>
+                    </div>`;
+                return;
+            }
+
+            data.findings.forEach(f => {
+                const isRedType = ['Stripe Secret Key', 'Stripe Publishable Key', 'AWS Access Key', 'AWS Secret Key'].includes(f.type);
+                const typeClass = isRedType ? 'red' : 'orange';
+
+                const card = document.createElement('div');
+                card.className = `finding-card ${f.severity}`;
+                card.innerHTML = `
+                    <div class="finding-top">
+                        <span class="type-badge ${typeClass}">${f.type}</span>
+                        <span class="badge ${f.severity}">${f.severity}</span>
+                    </div>
+                    <div class="finding-details">
+                        <div><span class="label">Value:</span> <span class="value">${f.value}</span></div>
+                        <div><span class="label">Source:</span> <span class="value">${f.source}</span></div>
+                        <div><span class="label">Line:</span> <span class="value">${f.line}</span></div>
+                        <div><span class="label">Masked:</span> <span class="value">Yes</span></div>
+                    </div>`;
+                findingsContainer.appendChild(card);
+            });
+        }
+    </script>
+</body>
+</html>
